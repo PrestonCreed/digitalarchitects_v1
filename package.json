@@ -1,0 +1,24 @@
+{
+    "name": "com.prestoncreedy.digitalarchitects",
+    "version": "0.1.0",
+    "displayName": "Digital Architects",
+    "description": "AI-powered architectural design system",
+    "unity": "2022.3",
+    "dependencies": {
+      "com.unity.textmeshpro": "3.0.6"
+    },
+    "keywords": [
+      "ai",
+      "architecture",
+      "design",
+      "procedural"
+    ],
+    "author": {
+      "name": "Preston Creedy",
+      "url": "https://github.com/PrestonCreed"
+    },
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/PrestonCreed/digitalarchitects.git"
+    }
+  }
