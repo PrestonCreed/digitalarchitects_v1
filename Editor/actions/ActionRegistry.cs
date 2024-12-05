@@ -1,41 +1,49 @@
-public class ActionRegistry : MonoBehaviour
+using UnityEngine;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System;
+
+namespace DigitalArchitects.Editor
 {
-    private Dictionary<string, BaseAction> registeredActions = new Dictionary<string, BaseAction>();
-    
-    void Awake()
+    public class ActionRegistry : MonoBehaviour
     {
-        LoadActions();
-    }
-    
-    private void LoadActions()
-    {
-        // Load all action ScriptableObjects from Assets/Actions folder
-        var actions = Resources.LoadAll<BaseAction>("Actions");
-        foreach (var action in actions)
+        private Dictionary<string, BaseAction> registeredActions = new Dictionary<string, BaseAction>();
+        
+        void Awake()
         {
-            RegisterAction(action);
+            LoadActions();
         }
-    }
-    
-    public void RegisterAction(BaseAction action)
-    {
-        if (!registeredActions.ContainsKey(action.actionId))
+        
+        private void LoadActions()
         {
-            registeredActions[action.actionId] = action;
-            Debug.Log($"Registered action: {action.actionId}");
-        }
-    }
-    
-    public async Task<ActionResult> ExecuteAction(string actionId, Dictionary<string, object> parameters)
-    {
-        if (registeredActions.TryGetValue(actionId, out BaseAction action))
-        {
-            if (action.ValidateParameters(parameters))
+            // Load all action ScriptableObjects from Assets/Actions folder
+            var actions = Resources.LoadAll<BaseAction>("Actions");
+            foreach (var action in actions)
             {
-                return await action.Execute(parameters);
+                RegisterAction(action);
             }
-            return new ActionResult { success = false, error = "Invalid parameters" };
         }
-        return new ActionResult { success = false, error = "Action not found" };
+        
+        public void RegisterAction(BaseAction action)
+        {
+            if (!registeredActions.ContainsKey(action.actionId))
+            {
+                registeredActions[action.actionId] = action;
+                Debug.Log($"Registered action: {action.actionId}");
+            }
+        }
+        
+        public async Task<ActionResult> ExecuteAction(string actionId, Dictionary<string, object> parameters)
+        {
+            if (registeredActions.TryGetValue(actionId, out BaseAction action))
+            {
+                if (action.ValidateParameters(parameters))
+                {
+                    return await action.Execute(parameters);
+                }
+                return new ActionResult { success = false, error = "Invalid parameters" };
+            }
+            return new ActionResult { success = false, error = "Action not found" };
+        }
     }
 }
