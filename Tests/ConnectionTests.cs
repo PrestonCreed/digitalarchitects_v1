@@ -100,5 +100,20 @@ namespace DigitalArchitects.Tests
             // Verify registration
             Assert.IsTrue(registry.HasAction(testAction.actionId));
         }
+        [UnityTest]
+public IEnumerator TestReactUIBridge()
+{
+    var uiBridge = new GameObject().AddComponent<ReactUIBridge>();
+    var testState = "{\"type\":\"test_state\"}";
+    
+    // Test UI state updates
+    uiBridge.SendStateToUI(testState);
+    
+    // Wait for potential UI updates
+    yield return new WaitForSeconds(1f);
+    
+    // Verify UI container exists
+    Assert.NotNull(GameObject.Find("react-ui-container"));
+}
     }
 }

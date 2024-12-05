@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 # Project-specific imports
-from ..config.ConfigManager import ConfigManager
-from ..utils.LLMSystem import MessageHandler
-from ..instances.InstanceManager import InstanceManager
-from ..core.websocketManager import WebSocketClientManager
-from ..tools.tool_registry import Tool
-from ..core.tool_manager import ArchitectToolManager
-from ..memory.MemorySystem import (
+from ..PythonBackend.config.ConfigManager import ConfigManager
+from ..PythonBackend.utils.LLMSystem import MessageHandler
+from ..PythonBackend.instances.InstanceManager import InstanceManager
+from ..PythonBackend.core.websocketManager import WebSocketClientManager
+from ..PythonBackend.tools.tool_registry import Tool
+from ..PythonBackend.core.tool_manager import ArchitectToolManager
+from ..PythonBackend.memory.MemorySystem import (
     MemoryManager,
     CollectiveMemory,
     ConversationMemory,
@@ -86,6 +86,7 @@ class TestDigitalArchitectsCore:
             
         except Exception as e:
             pytest.fail(f"WebSocket test failed: {str(e)}")
+
 
 class TestToolSystem:
     """Test tool registration and execution"""
@@ -183,6 +184,98 @@ class TestMemorySystem:
             
         except Exception as e:
             pytest.fail(f"Memory system test failed: {str(e)}")
+
+@pytest.mark.asyncio
+async def test_bidirectional_communication():
+    """Test full communication cycle between Unity and Python"""
+    unity_ws = WebSocketClientManager("ws://localhost:8080", "test_key")
+    python_handler = MessageHandler()
+    
+    try:
+        await unity_ws.connect()
+        
+        # Test Unity -> Python message flow
+        unity_message = {
+            "type": "architect_request",
+            "content": "Test request",
+            "metadata": {"project_context": {}}
+        }
+        
+        response = await unity_ws.send_command(unity_message)
+        assert response is not None
+        assert "status" in response
+        
+        # Test Python -> Unity message flow
+        python_response = await python_handler.process_message(
+            "test message",
+            {"unity_connection": unity_ws}
+        )
+        assert python_response.is_valid
+    except Exception as e:
+        pytest.fail(f"Communication test failed: {str(e)}")
+
+@pytest.mark.asyncio
+async def test_full_pipeline():
+    """Test complete workflow from UI request through Python to Unity execution"""
+    try:
+        # Initialize components
+        config = ConfigManager()
+        instance_manager = InstanceManager(config, "test_project")
+        ws_manager = WebSocketClientManager(
+            config.get_websocket_config().uri,
+            config.get_websocket_config().api_key
+        )
+        llm_handler = MessageHandler()
+
+        # Create and initialize an architect instance
+        architect_id = await instance_manager.create_instance(
+            name="test_architect",
+            primary_objective="Create test building"
+        )
+        
+        # Simulate UI/React request coming through WebSocket
+        ui_request = {
+            "type": "architect_request",
+            "architect_id": architect_id,
+            "action": "create_building",
+            "parameters": {
+                "location": [0, 0, 0],
+                "building_type": "test_building"
+            },
+            "project_context": {
+                "environment": "test_environment",
+                "theme": "test_theme"
+            }
+        }
+
+        # Send request through websocket
+        await ws_manager.connect()
+        response = await ws_manager.send_command(ui_request)
+        assert response is not None
+        assert response.get("status") == "success"
+
+        # Verify architect state updated
+        architect_state = instance_manager.state_manager.get_agent_state(architect_id)
+        assert architect_state is not None
+        assert architect_state.status == "active"
+        
+        # Verify task was added to architect's history
+        assert len(architect_state.task_history) > 0
+        last_task = architect_state.task_history[-1]
+        assert last_task["type"] == "create_building"
+
+        # Wait for and verify Unity response (should come through websocket)
+        unity_response = await ws_manager.receive_state()
+        assert unity_response is not None
+        assert "building_created" in unity_response
+        assert unity_response["building_created"]["position"] == [0, 0, 0]
+
+        # Clean up
+        await instance_manager.terminate_instance(architect_id)
+        await ws_manager.disconnect()
+
+    except Exception as e:
+        pytest.fail(f"Full pipeline test failed: {str(e)}")              
 
 # Run tests
 if __name__ == '__main__':
