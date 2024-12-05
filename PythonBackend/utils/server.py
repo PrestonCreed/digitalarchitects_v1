@@ -1,19 +1,25 @@
-import zmq
 import asyncio
 import json
 import logging
 from typing import Dict, Any
 from dataclasses import asdict
-from LLMSystem import MessageHandler, ArchitectRequest
+
 from ..core.MainArchitecture import DigitalArchitect
 from ..chat.ConversationHandler import ConversationHandler
 from .LLMSystem import MessageHandler, ArchitectRequest
+from ..core.websocketManager import WebSocketClientManager
+from ..config.ConfigManager import ConfigManager
 
 class DigitalArchitectServer:
-    def __init__(self, port: int = 5555):
-        self.port = port
-        self.context = zmq.Context()
-        self.socket = self.context.socket(zmq.REP)
+    def __init__(self, config: ConfigManager = None):
+        self.config = config or ConfigManager()
+        self.port = self.config.get_environment_config().default_port
+        
+        # Initialize WebSocket Manager
+        self.ws_manager = WebSocketClientManager(
+            uri=f"ws://localhost:{self.port}/unity",
+            api_key=self.config.get_websocket_config().api_key
+        )
         
         # Initialize core components
         self.architect = DigitalArchitect()
@@ -21,103 +27,76 @@ class DigitalArchitectServer:
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
-        self._setup_logging()
+        
+        # Message handlers
+        self.message_handlers = {
+            "architect_request": self._handle_architect_request,
+            "environment_update": self._handle_environment_update,
+            "state_sync": self._handle_state_sync
+        }
 
     async def start(self):
-        """Start the server and listen for requests"""
-        self.socket.bind(f"tcp://*:{self.port}")
-        self.logger.info(f"Digital Architect Server started on port {self.port}")
-        
-        while True:
-            try:
-                # Receive message from Unity
-                message_data = await self.receive_message()
-                self.logger.info(f"Received request: {message_data}")
-                
-                # Extract project context if provided
-                project_context = message_data.get('metadata', {}).get('project_context', {})
-                
-                # Process with LLM
-                response = await self.message_handler.process_message(
-                    message_data['message'],
-                    project_context
-                )
-                
-                # Send response back to Unity
-                await self.send_response(response)
-                
-            except Exception as e:
-                self.logger.error(f"Error processing request: {e}")
-                await self.send_error(str(e))
-
-    async def receive_message(self) -> Dict[str, Any]:
-        """Receive and parse message from Unity"""
-        message = self.socket.recv_string()
-        return json.loads(message)
-    
-    async def handle_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle incoming message from Unity"""
+        """Start the server and initialize WebSocket connection"""
         try:
-            # Extract message and context
-            message = message_data['message']
-            project_context = message_data.get('metadata', {}).get('project_context', {})
+            # Setup WebSocket connection
+            await self.ws_manager.connect()
             
-            # Process through conversation handler
-            conversation_response = await self.conversation_handler.process_request(
-                message, 
-                project_context
-            )
+            # Start message monitoring
+            await self.ws_manager.start()
             
-            if conversation_response.is_valid:
-                # Process through architect
-                architect_response = await self.architect.handle_request(
-                    message,
-                    project_context
-                )
+            # Add message handler
+            self.ws_manager.on_message_received = self.handle_message
+            
+            self.logger.info(f"Digital Architect Server started and connected to Unity")
+            
+            # Keep server running
+            while True:
+                await asyncio.sleep(1)
                 
-                # Only return if we need user input or task is complete
-                if architect_response.get("needs_clarification"):
-                    return {
-                        "type": "clarification",
-                        "message": await self.conversation_handler.generate_clarification_request(
-                            architect_response
-                        )
-                    }
-                elif architect_response.get("is_complete"):
-                    return {
-                        "type": "completion",
-                        "message": await self.conversation_handler.generate_completion_message(
-                            architect_response
-                        )
-                    }
-                else:
-                    return {"type": "processing"}
-            
-            return {"type": "error", "message": "Invalid request"}
-            
         except Exception as e:
-            self.logger.error(f"Error processing message: {str(e)}")
+            self.logger.error(f"Server error: {e}")
+            raise
+
+    async def handle_message(self, message_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Route incoming messages to appropriate handlers"""
+        try:
+            message_type = message_data.get("type")
+            if message_type in self.message_handlers:
+                return await self.message_handlers[message_type](message_data)
+            else:
+                return {"type": "error", "message": f"Unknown message type: {message_type}"}
+        except Exception as e:
+            self.logger.error(f"Error handling message: {e}")
             return {"type": "error", "message": str(e)}
 
-    async def send_response(self, response: ArchitectRequest):
-        """Send response back to Unity"""
-        response_json = json.dumps(asdict(response))
-        self.socket.send_string(response_json)
+    async def _handle_architect_request(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle requests for architect actions"""
+        message = data.get("message")
+        project_context = data.get("metadata", {}).get("project_context", {})
+        
+        # Process through conversation handler
+        conversation_response = await self.conversation_handler.process_request(
+            message, project_context
+        )
+        
+        if conversation_response.is_valid:
+            return await self.architect.handle_request(message, project_context)
+        
+        return {"type": "error", "message": "Invalid request"}
 
-    async def send_error(self, error_message: str):
-        """Send error response to Unity"""
-        error_response = json.dumps({
-            'is_valid': False,
-            'error_message': error_message,
-            'analysis': '',
-            'building_info': {}
-        })
-        self.socket.send_string(error_response)
+    async def _handle_environment_update(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle environment state updates from Unity"""
+        # Process environment updates
+        return {"type": "acknowledgment", "status": "processed"}
 
-    def cleanup(self):
+    async def _handle_state_sync(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle state synchronization requests"""
+        # Process state sync
+        return {"type": "state_sync", "state": self.architect.get_state()}
+
+    async def cleanup(self):
         """Cleanup resources"""
-        self.socket.close()
-        self.context.term()
+        await self.ws_manager.disconnect()
 
 if __name__ == "__main__":
     server = DigitalArchitectServer()
@@ -125,5 +104,4 @@ if __name__ == "__main__":
         asyncio.run(server.start())
     except KeyboardInterrupt:
         print("\nShutting down server...")
-    finally:
-        server.cleanup()
+        asyncio.run(server.cleanup())
