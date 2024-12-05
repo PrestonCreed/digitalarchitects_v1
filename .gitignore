@@ -4,17 +4,19 @@ __pycache__/
 *.py[cod]
 .DS_Store
 
-# Unity
+# Unity specific
 Library/
 Temp/
-Obj/
-Build/
 Logs/
+UserSettings/
+obj/
 *.csproj
 *.unityproj
 *.sln
 *.user
-.vscode/
+*.userprefs
+*.pidb
+*.booproj
 
 # Blender (optional)
 *.blend1
@@ -22,3 +24,44 @@ Logs/
 
 
 agents/prompts/system_prompts.py
+
+# Node.js / React
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+**/dist/
+**/build/
+**/out/
+**/.next/
+bundle.js
+bundle.js.map
+
+# Development
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Temporary files
+*.log
+*.tmp
+.temp/
+.cache/
+
+# Package managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

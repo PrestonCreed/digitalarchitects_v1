@@ -93,11 +93,11 @@ namespace DigitalArchitect
                 client = new RequestSocket();
                 client.Connect(PYTHON_SERVER);
                 isConnected = true;
-                if(debugMode) Debug.Log("Connected to Digital Architect LLM Service");
+                if(debugMode) UnityEngine.Debug.Log("Connected to Digital Architect LLM Service");
             }
             catch (Exception e)
             {
-                Debug.LogError($"Failed to connect to Digital Architect Service: {e.Message}");
+                UnityEngine.Debug.LogError($"Failed to connect to Digital Architect Service: {e.Message}");
                 isConnected = false;
             }
         }
